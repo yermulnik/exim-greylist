@@ -100,7 +100,7 @@
        break;
 +
 +      case type_greylist:
-+      ratelimit = (dbdata_serialize *)record;
++      greylist = (dbdata_serialize *)record;
 +      printf("0 time stamp:  %s\n", print_time(greylist->time_stamp));
 +      printf("1 count:       %d\n", greylist->count);
 +      break;
