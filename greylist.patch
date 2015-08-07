@@ -1,0 +1,211 @@
+--- scripts/MakeLinks.orig 2015-07-24 00:20:37.000000000 +0300
++++ scripts/MakeLinks 2015-08-07 11:03:55.326834000 +0300
+@@ -121,6 +121,8 @@
+ ln -s ../src/$f $f
+ done
++ln -s ../src/greylist.c greylist.c
++
+ # EXPERIMENTAL_*
+ # for f in bmi_spam.c bmi_spam.h dcc.c dcc.h dane.c dane-gnu.c dane-openssl.c \
+ # danessl.h imap_utf7.c spf.c spf.h srs.c srs.h utf8.c
+diff -urN src/exim_dbutil.c src/exim_dbutil.c
+--- src/exim_dbutil.c 2011-03-22 10:00:51.000000000 +0200
++++ src/exim_dbutil.c 2011-03-22 15:33:37.000000000 +0200
+@@ -68,6 +68,7 @@
+ #define type_misc 3
+ #define type_callout 4
+ #define type_ratelimit 5
++#define type_greylist 6
+ 
+ 
+ 
+@@ -120,7 +121,7 @@
+ usage(uschar *name, uschar *options)
+ {
+ printf("Usage: exim_%s%s <spool-directory> <database-name>\n", name, options);
+-printf(" <database-name> = retry | misc | wait-<transport-name> | callout | ratelimit\n");
++printf(" <database-name> = retry | misc | wait-<transport-name> | callout | ratelimit | greylist\n");
+ exit(1);
+ }
+ 
+@@ -143,6 +144,7 @@
+ if (Ustrncmp(argv[2], "wait-", 5) == 0) return type_wait;
+ if (Ustrcmp(argv[2], "callout") == 0) return type_callout;
+ if (Ustrcmp(argv[2], "ratelimit") == 0) return type_ratelimit;
++ if (Ustrcmp(argv[2], "greylist") == 0) return type_greylist;
+ }
+ usage(name, options);
+ return -1; /* Never obeyed */
+@@ -545,6 +547,7 @@
+ dbdata_wait *wait;
+ dbdata_callout_cache *callout;
+ dbdata_ratelimit *ratelimit;
++ dbdata_serialize *greylist;
+ dbdata_ratelimit_unique *rate_unique;
+ int count_bad = 0;
+ int i, length;
+@@ -680,6 +683,13 @@
+ ratelimit->rate, keybuffer);
+ 
+ break;
++
++ case type_greylist:
++ greylist = (dbdata_serialize *)value;
++ printf("%s key: %s count: %d\n",
++ print_time(greylist->time_stamp), keybuffer, greylist->count);
++
++ break;
+ }
+ store_reset(value);
+ }
+@@ -752,6 +762,7 @@
+ dbdata_wait *wait;
+ dbdata_callout_cache *callout;
+ dbdata_ratelimit *ratelimit;
++ dbdata_serialize *greylist;
+ dbdata_ratelimit_unique *rate_unique;
+ int i, oldlength;
+ uschar *t;
+@@ -917,6 +928,27 @@
+ break;
+ }
+ break;
++
++ case type_greylist:
++ greylist = (dbdata_serialize *)record;
++ length = sizeof(dbdata_serialize);
++ switch(fieldno)
++ {
++ case 0:
++ if ((tt = read_time(value)) > 0) greylist->time_stamp = tt;
++ else printf("bad time value\n");
++ break;
++
++ case 1:
++ greylist->count = Uatoi(value);
++ break;
++
++ default:
++ printf("unknown field number\n");
++ verify = 0;
++ break;
++ }
++ break;
+ }
+ 
+ dbfn_write(dbm, name, record, length);
+@@ -1021,6 +1053,12 @@
+ printf("1 fract. time: .%06d\n", ratelimit->time_usec);
+ printf("2 sender rate: % .3f\n", ratelimit->rate);
+ break;
++
++ case type_greylist:
++ ratelimit = (dbdata_serialize *)record;
++ printf("0 time stamp: %s\n", print_time(greylist->time_stamp));
++ printf("1 count: %d\n", greylist->count);
++ break;
+ }
+ }
+ 
+diff -urN src/greylist.c src/greylist.c
+--- src/greylist.c 1970-01-01 03:00:00.000000000 +0300
++++ src/greylist.c 2011-03-22 15:33:37.000000000 +0200
+@@ -0,0 +1,56 @@
++/*
++ Idea: Lena(at)lena.kiev.ua, http://wiki.exim.org/DbLessGreyListingC
++ Written by: vc(at)vc.org.ua, 2008-06-10
++ License: BSD
++ Compile: cc -shared -fPIC -o vc_grey.so vc_grey.c
++*/
++#include "local_scan.h"
++#include "dbstuff.h"
++#include "dbfunctions.h"
++#include <stdlib.h>
++#include <fcntl.h>
++#include <time.h>
++
++int greylist(uschar **yield, int argc, uschar *argv[])
++{
++ time_t defer_timeout = 60*4; // 4m
++ time_t allow_timeout = 60*60*8; // 8h
++ time_t t = time(NULL);
++ open_db db;
++ dbdata_serialize *grey_data_p;
++
++ if (argc < 1 || argc > 3) {
++ *yield = US "bad number of arguments";
++ return ERROR;
++ }
++ if (argc > 1) defer_timeout = atol(CS argv[1]);
++ if (argc > 2) allow_timeout = atol(CS argv[2]);
++ if (!(dbfn_open(US "greylist", O_RDWR, &db, TRUE))) {
++ *yield = US "can't open greylist database in spool directory";
++ return ERROR;
++ }
++ if (!(grey_data_p = dbfn_read(&db, argv[0]))) {
++ dbdata_serialize grey_data;
++ *yield = US "1"; // defer
++ grey_data.time_stamp = t;
++ grey_data.count = 0;
++ dbfn_write(&db, argv[0], &grey_data, sizeof(dbdata_serialize));
++ } else {
++ if (t - grey_data_p->time_stamp > allow_timeout) {
++ *yield = US "1"; // defer
++ grey_data_p->time_stamp = t;
++ grey_data_p->count = 0;
++ dbfn_write(&db, argv[0], grey_data_p, sizeof(dbdata_serialize));
++ } else if (grey_data_p->count > 0) {
++ *yield = US "0"; // allow
++ } else if (t - grey_data_p->time_stamp > defer_timeout) {
++ *yield = US "0"; // allow
++ grey_data_p->count = 1;
++ dbfn_write(&db, argv[0], grey_data_p, sizeof(dbdata_serialize));
++ } else {
++ *yield = US "1"; // defer
++ }
++ }
++ dbfn_close(&db);
++ return OK;
++}
+--- OS/Makefile-Base.orig 2015-07-24 00:20:37.000000000 +0300
++++ OS/Makefile-Base 2015-08-07 10:55:02.451700000 +0300
+@@ -103,7 +103,7 @@
+ utils: $(EXIM_MONITOR) exicyclog exinext exiwhat \
+ exigrep eximstats exipick exiqgrep exiqsumm \
+ transport-filter.pl convert4r3 convert4r4 \
+- exim_checkaccess \
++ exim_checkaccess greylist.so \
+ exim_dbmbuild exim_dumpdb exim_fixdb exim_tidydb exim_lock
+ 
+ 
+@@ -330,7 +330,7 @@
+ auths/auths.a pdkim/pdkim.a \
+ $(LIBRESOLV) $(LIBS) $(LIBS_EXIM) $(IPV6_LIBS) $(EXTRALIBS) \
+ $(EXTRALIBS_EXIM) $(DBMLIB) $(LOOKUP_LIBS) $(AUTH_LIBS) \
+- $(PERL_LIBS) $(TLS_LIBS) $(PCRE_LIBS) $(LDFLAGS)
++ $(PERL_LIBS) $(TLS_LIBS) $(PCRE_LIBS) $(DUMMY_LDFLAGS) -L${LOCALBASE}/lib
+ @if [ x"$(STRIP_COMMAND)" != x"" ]; then \
+ echo $(STRIP_COMMAND) exim; \
+ $(STRIP_COMMAND) exim; \
+@@ -340,6 +340,21 @@
+ @echo ">>> exim binary built"
+ @echo " "
+ 
++# Compile instructions for greylist.so
++
++greylist.so: greylist.c
++ @echo "$(LNCC) -o ${.TARGET}"
++ $(FE)$(LNCC) $(CFLAGS_DYNAMIC) $(INCLUDE) -o ${.TARGET} $(LFLAGS) ${.OODATE} \
++ $(LIBS) $(EXTRALIBS) $(DBMLIB)
++ @if [ x"$(STRIP_COMMAND)" != x"" ]; then \
++ echo $(STRIP_COMMAND) ${.TARGET}; \
++ $(STRIP_COMMAND) ${.TARGET}; \
++ fi
++ @echo "!!! DONT FORGET TO COPY ${.TARGET} TO ${LOCALBASE}/libexec/ DIRECTORY !!!"
++ @echo ">>> ${.TARGET} utility built"
++ @echo " "
++
++
+ # The utility for dumping the contents of an exim database
+ 
+ OBJ_DUMPDB = exim_dumpdb.o util-os.o util-store.o
