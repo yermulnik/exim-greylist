@@ -7,7 +7,7 @@ EXIM patches to implement greylisting
 **This patchset is intended to be used with FreeBSD port of EXIM (ports/mail/exim)**
 
 ####INSTALLATION
-`/etc/make.conf`
+`/etc/make.conf`:
 ```Makefile
 .if !empty(.CURDIR:M/*/ports/mail/exim)
 EXTRA_PATCHES+=/path/to/greylist.patch
@@ -17,7 +17,7 @@ EXTRA_PATCHES+=/path/to/greylist.patch
 #> portinstall (or portupgrade) -W mail/exim && make -C /usr/ports/mail/exim/ clean
 ```
 ####USAGE
-`/usr/local/etc/exim/configure`
+`/usr/local/etc/exim/configure`:
 ```
 acl_greylist:
   defer log_message         = greylisted
