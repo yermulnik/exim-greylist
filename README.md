@@ -14,7 +14,10 @@ EXTRA_PATCHES+=/path/to/greylist.patch
 .endif
 ```
 ```shell
-#> portinstall (or portupgrade) -W mail/exim && make -C /usr/ports/mail/exim/ clean
+#> make -C /usr/ports/mail/exim/ install [or just "portinstall|portupgrade -W mail/exim"]
+#> /usr/bin/install -s -o root -g wheel -m 555 `make -C /usr/ports/mail/exim/ -V WRKSRC`/build-`uname -s`-`uname -m`/greylist.so `make -C /usr/ports/mail/exim/ -V LOCALBASE`/libexec/
+#> make -C /usr/ports/mail/exim/ clean
+#> service exim restart
 ```
 ####USAGE
 `/usr/local/etc/exim/configure`:
