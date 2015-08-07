@@ -184,14 +184,14 @@
 +# Compile instructions for greylist.so
 +
 +greylist.so: greylist.c
-+	@echo "$(LNCC) -o ${.TARGET}"
-+	$(FE)$(LNCC) $(CFLAGS_DYNAMIC) $(INCLUDE) -o ${.TARGET} $(LFLAGS) ${.OODATE} \
++	@echo "$(LNCC) -o greylist.so"
++	$(FE)$(LNCC) $(CFLAGS_DYNAMIC) $(INCLUDE) -o greylist.so $(LFLAGS) \
 +	  $(LIBS) $(EXTRALIBS) $(DBMLIB)
 +	@if [ x"$(STRIP_COMMAND)" != x"" ]; then \
-+	  echo $(STRIP_COMMAND) ${.TARGET}; \
-+	  $(STRIP_COMMAND) ${.TARGET}; \
++	  echo $(STRIP_COMMAND) greylist.so; \
++	  $(STRIP_COMMAND) greylist.so; \
 +	fi
-+	@echo ">>> ${.TARGET} utility built"
++	@echo ">>> greylist.so utility built"
 +	@echo " "
 +
 +
