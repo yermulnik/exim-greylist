@@ -73,7 +73,7 @@
 +
 +            case type_greylist:
 +            greylist = (dbdata_serialize *)record;
-+            length = sizeof(dbdata_serialize);
++            //length = sizeof(dbdata_serialize);
 +            switch(fieldno)
 +              {
 +              case 0:
@@ -177,7 +177,7 @@
          exim_dbmbuild exim_dumpdb exim_fixdb exim_tidydb exim_lock
  
  
-@@ -340,6 +340,20 @@
+@@ -340,6 +340,19 @@
  	@echo ">>> exim binary built"
  	@echo " "
  
@@ -185,8 +185,7 @@
 +
 +greylist.so: greylist.c
 +	@echo "$(LNCC) -o greylist.so"
-+	$(FE)$(LNCC) $(CFLAGS_DYNAMIC) $(INCLUDE) -o greylist.so $(LFLAGS) \
-+	  $(LIBS) $(EXTRALIBS) $(DBMLIB)
++	$(FE)$(LNCC) $(CFLAGS_DYNAMIC) $(LFLAGS) -o greylist.so greylist.c
 +	@if [ x"$(STRIP_COMMAND)" != x"" ]; then \
 +	  echo $(STRIP_COMMAND) greylist.so; \
 +	  $(STRIP_COMMAND) greylist.so; \
